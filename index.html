@@ -53,6 +53,74 @@
         let currentCamera = "environment"; // Caméra arrière par défaut
         let selection = { x: 0, y: 0, width: 0, height: 0 }; // Variables pour dessiner la sélection
 
+        // Générer des codes-barres à partir du texte
+        function generateBarcodes() {
+            let container = document.getElementById("barcodeContainer");
+            container.innerHTML = "";  // Réinitialiser les codes existants
+            let lines = document.getElementById("textList").value.split("\n");
+
+            lines.forEach(line => {
+                let trimmed = line.trim();
+                if (trimmed) {
+                    let barcodeDiv = document.createElement("div");
+                    barcodeDiv.classList.add("barcode-item");
+
+                    let canvas = document.createElement("canvas");
+                    JsBarcode(canvas, trimmed, {
+                        format: "CODE128",
+                        displayValue: true
+                    });
+
+                    barcodeDiv.appendChild(canvas);
+                    container.appendChild(barcodeDiv);
+                }
+            });
+        }
+
+        // Fonction pour démarrer le scanner
+        function startScanner() {
+            document.getElementById("scanner-container").style.display = "block";
+            document.getElementById("stopScannerBtn").style.display = "inline-block";
+
+            Quagga.init({
+                inputStream: {
+                    name: "Live",
+                    type: "LiveStream",
+                    target: document.querySelector("#scanner"),
+                    constraints: {
+                        facingMode: currentCamera // Utiliser la caméra choisie
+                    }
+                },
+                decoder: {
+                    readers: ["code_128_reader", "ean_reader", "ean_8_reader", "upc_reader"]
+                }
+            }, function(err) {
+                if (err) {
+                    console.error("Erreur d'initialisation du scanner : ", err);
+                    return;
+                }
+                Quagga.start();
+            });
+
+            Quagga.onDetected(function(result) {
+                let scannedCode = result.codeResult.code;
+                let textarea = document.getElementById("textList");
+
+                if (!textarea.value.includes(scannedCode)) {
+                    textarea.value += (textarea.value ? "\n" : "") + scannedCode;
+                }
+                
+                stopScanner(); // Arrêter automatiquement après détection
+            });
+        }
+
+        // Fonction pour arrêter le scanner
+        function stopScanner() {
+            Quagga.stop();
+            document.getElementById("scanner-container").style.display = "none";
+            document.getElementById("stopScannerBtn").style.display = "none";
+        }
+
         // Fonction pour capturer du texte
         function captureText() {
             document.getElementById("screenshot-container").style.display = "block";
@@ -143,13 +211,12 @@
             document.getElementById("screenshot-container").style.display = "none";
         }
 
-        // Fonction pour changer de caméra
+        // Fonction pour changer de caméra (avant/arrière)
         function switchCamera() {
-            currentCamera = (currentCamera === "environment") ? "user" : "environment"; // Alterner entre avant et arrière
-            stopCapture();
+            currentCamera = (currentCamera === "environment") ? "user" : "environment";
+            stopScanner();
             captureText();
         }
     </script>
-
 </body>
 </html>
