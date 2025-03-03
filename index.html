@@ -3,149 +3,150 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Scanner & Générer Code-Barres + Capture Texte</title>
+    <title>Scanner et Générateur de Code-Barres</title>
 
     <!-- Librairies -->
     <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.0/dist/JsBarcode.all.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.0.2/tesseract.min.js"></script>
-    <script src="https://unpkg.com/quagga"></script>
 
     <style>
         body { font-family: Arial, sans-serif; text-align: center; margin: 20px; }
+        textarea { width: 90%; height: 150px; font-size: 16px; margin: 10px 0; padding: 10px; }
         button { padding: 10px; font-size: 16px; cursor: pointer; margin: 5px; }
-        video, canvas { width: 100%; max-width: 400px; margin: auto; display: block; }
-        #captureContainer, #barcodeContainer, #scanner-container { display: none; }
-        #capturedImage { border: 2px solid black; cursor: crosshair; }
-        #textOutput { width: 80%; height: 100px; margin: 10px auto; display: block; }
+        .barcode-container { margin-top: 20px; text-align: center; }
+        .barcode-item { margin: 10px; display: block; }
+        video, canvas { width: 100%; max-width: 500px; }
+        #screenshot-container { display: none; position: relative; }
+        #selectionCanvas { position: absolute; top: 0; left: 0; cursor: crosshair; border: 2px dashed red; }
     </style>
 </head>
 <body>
 
-    <h1>Scanner & Générer Code-Barres + Capture Texte</h1>
+    <h1>Scanner et Générateur de Code-Barres</h1>
 
-    <textarea id="textInput" placeholder="Saisir ou scanner un texte..."></textarea><br>
+    <textarea id="textInput" placeholder="Saisissez du texte (chaque ligne génère un code-barres)"></textarea><br>
 
-    <button onclick="generateBarcode()">📌 Générer Code-Barres</button>
-    <button onclick="startScanner()">📷 Scanner Code</button>
-    <button onclick="captureText()">🖼 Capturer Texte</button>
+    <button onclick="generateBarcodes()">📌 Générer Codes-Barres</button>
+    <button onclick="captureText()">📷 Capturer du Texte</button>
 
-    <div id="scanner-container">
-        <video id="scanner"></video>
-        <button onclick="stopScanner()">❌ Arrêter Scanner</button>
+    <div class="barcode-container" id="barcodeContainer"></div>
+
+    <div id="screenshot-container">
+        <video id="video" autoplay></video>
+        <canvas id="selectionCanvas"></canvas>
+        <button onclick="switchCamera()">🔄 Changer de Caméra</button>
     </div>
-
-    <div id="barcodeContainer"></div>
-
-    <video id="video" autoplay></video>
-    
-    <div id="captureContainer">
-        <canvas id="capturedImage"></canvas>
-        <button onclick="extractText()">🔍 Extraire Texte</button>
-    </div>
-
-    <textarea id="textOutput" placeholder="Texte extrait..."></textarea>
 
     <script>
-        let video = document.getElementById("video");
-        let canvas = document.getElementById("capturedImage");
-        let ctx = canvas.getContext("2d");
         let currentStream = null;
+        let currentCamera = "environment"; // Caméra arrière par défaut
         let selection = { x: 0, y: 0, width: 0, height: 0 };
-        let isSelecting = false;
-        let startX, startY;
 
-        // 📌 Générer un code-barres
-        function generateBarcode() {
-            let text = document.getElementById("textInput").value;
-            if (text.trim() === "") return alert("Saisissez un texte !");
-            
+        function generateBarcodes() {
             let container = document.getElementById("barcodeContainer");
-            container.innerHTML = "";  
-            
-            let canvas = document.createElement("canvas");
-            JsBarcode(canvas, text, { format: "CODE128", displayValue: true });
+            container.innerHTML = "";
+            let lines = document.getElementById("textInput").value.split("\n");
 
-            container.appendChild(canvas);
-            container.style.display = "block";
-        }
+            lines.forEach(line => {
+                let trimmed = line.trim();
+                if (trimmed) {
+                    let barcodeDiv = document.createElement("div");
+                    barcodeDiv.classList.add("barcode-item");
 
-        // 📌 Scanner un code-barres
-        function startScanner() {
-            document.getElementById("scanner-container").style.display = "block";
-            Quagga.init({
-                inputStream: { name: "Live", type: "LiveStream", target: document.querySelector("#scanner") },
-                decoder: { readers: ["code_128_reader", "ean_reader", "ean_8_reader", "upc_reader"] }
-            }, err => {
-                if (err) return console.error("Erreur scanner : ", err);
-                Quagga.start();
-            });
+                    let canvas = document.createElement("canvas");
+                    JsBarcode(canvas, trimmed, {
+                        format: "CODE128",
+                        displayValue: true,
+                        fontSize: 16,
+                        width: 2,
+                        height: 50
+                    });
 
-            Quagga.onDetected(result => {
-                document.getElementById("textInput").value = result.codeResult.code;
-                stopScanner();
+                    barcodeDiv.appendChild(canvas);
+                    container.appendChild(barcodeDiv);
+                }
             });
         }
 
-        function stopScanner() {
-            Quagga.stop();
-            document.getElementById("scanner-container").style.display = "none";
-        }
-
-        // 📌 Ouvrir la caméra
         function captureText() {
-            navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+            document.getElementById("screenshot-container").style.display = "block";
+            let video = document.getElementById("video");
+            let canvas = document.getElementById("selectionCanvas");
+
+            if (currentStream) {
+                currentStream.getTracks().forEach(track => track.stop());
+            }
+
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: currentCamera } })
                 .then(stream => {
                     video.srcObject = stream;
                     currentStream = stream;
                 })
-                .catch(err => console.error("Erreur accès caméra : ", err));
+                .catch(err => console.error("Erreur d'accès à la caméra :", err));
+
+            canvas.addEventListener("mousedown", startSelection);
+            canvas.addEventListener("mousemove", updateSelection);
+            canvas.addEventListener("mouseup", endSelection);
         }
 
-        // 📌 Capturer une image
-        function captureImage() {
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            document.getElementById("captureContainer").style.display = "block";
-        }
+        let isSelecting = false;
+        let startX, startY;
 
-        // 📌 Sélection manuelle
-        canvas.addEventListener("mousedown", event => {
+        function startSelection(event) {
             isSelecting = true;
             startX = event.offsetX;
             startY = event.offsetY;
-        });
+        }
 
-        canvas.addEventListener("mousemove", event => {
+        function updateSelection(event) {
             if (isSelecting) {
+                let ctx = document.getElementById("selectionCanvas").getContext("2d");
                 let width = event.offsetX - startX;
                 let height = event.offsetY - startY;
                 selection = { x: startX, y: startY, width: width, height: height };
 
-                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
                 ctx.strokeStyle = "red";
                 ctx.lineWidth = 2;
                 ctx.strokeRect(startX, startY, width, height);
             }
-        });
+        }
 
-        canvas.addEventListener("mouseup", () => {
+        function endSelection(event) {
             isSelecting = false;
-        });
 
-        // 📌 Extraire le texte
-        function extractText() {
+            let ctx = document.getElementById("selectionCanvas").getContext("2d");
+            let video = document.getElementById("video");
+
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            let selectedImage = ctx.getImageData(selection.x, selection.y, selection.width, selection.height);
             let selectedCanvas = document.createElement("canvas");
             selectedCanvas.width = selection.width;
             selectedCanvas.height = selection.height;
             let selectedCtx = selectedCanvas.getContext("2d");
-            selectedCtx.drawImage(canvas, selection.x, selection.y, selection.width, selection.height, 0, 0, selection.width, selection.height);
+            selectedCtx.putImageData(selectedImage, 0, 0);
 
-            Tesseract.recognize(selectedCanvas, 'eng')
-                .then(({ data: { text } }) => {
-                    document.getElementById("textOutput").value = text;
+            html2canvas(selectedCanvas).then(screenshot => {
+                Tesseract.recognize(screenshot, 'eng').then(({ data: { text } }) => {
+                    let textarea = document.getElementById("textInput");
+                    textarea.value += (textarea.value ? "\n" : "") + text;
+                    stopCapture();
                 });
+            });
+        }
+
+        function stopCapture() {
+            if (currentStream) {
+                currentStream.getTracks().forEach(track => track.stop());
+            }
+            document.getElementById("screenshot-container").style.display = "none";
+        }
+
+        function switchCamera() {
+            currentCamera = currentCamera === "environment" ? "user" : "environment";
+            captureText();
         }
     </script>
 
