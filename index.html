@@ -17,7 +17,7 @@
         button, select { padding: 10px; font-size: 16px; cursor: pointer; margin: 5px; }
         #screenshot-container { display: none; position: relative; }
         video, canvas { width: 100%; max-width: 500px; }
-        #selectionCanvas { position: absolute; top: 0; left: 0; cursor: crosshair; z-index: 10; }
+        #selectionCanvas { position: absolute; top: 0; left: 0; cursor: crosshair; z-index: 10; border: 2px dashed red; }
         .barcode-container { margin-top: 20px; }
         .barcode-item { margin: 10px; display: inline-block; }
         #extractedText { display: none; width: 80%; height: 50px; }
@@ -51,6 +51,7 @@
     <script>
         let currentStream = null;
         let currentCamera = "environment"; // Caméra arrière par défaut
+        let selection = { x: 0, y: 0, width: 0, height: 0 }; // Variables pour dessiner la sélection
 
         // Générer des codes-barres à partir du texte
         function generateBarcodes() {
@@ -126,22 +127,77 @@
             let video = document.getElementById("video");
             let canvas = document.getElementById("selectionCanvas");
 
-            navigator.mediaDevices.getUserMedia({ video: { facingMode: currentCamera } }).then(stream => {
-                video.srcObject = stream;
-                currentStream = stream;
-            });
+            // Arrêter la capture vidéo précédente si elle existe
+            if (currentStream) {
+                let tracks = currentStream.getTracks();
+                tracks.forEach(track => track.stop());
+            }
 
-            canvas.addEventListener("click", function(event) {
-                let ctx = canvas.getContext("2d");
-                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            // Demander la permission pour utiliser la caméra
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: currentCamera } })
+                .then(stream => {
+                    video.srcObject = stream;
+                    currentStream = stream;
+                })
+                .catch(err => {
+                    console.error("Erreur d'accès à la caméra : ", err);
+                });
 
-                // Capture d'écran et reconnaissance avec Tesseract.js
-                html2canvas(canvas).then(screenshot => {
-                    Tesseract.recognize(screenshot, 'eng').then(({ data: { text } }) => {
-                        let textarea = document.getElementById("textList");
-                        textarea.value += (textarea.value ? "\n" : "") + text;
-                        stopCapture(); // Arrêter la capture après l'extraction du texte
-                    });
+            // Événements pour dessiner un cadre de sélection
+            canvas.addEventListener("mousedown", startSelection);
+            canvas.addEventListener("mousemove", updateSelection);
+            canvas.addEventListener("mouseup", endSelection);
+        }
+
+        // Variables pour dessiner la sélection
+        let isSelecting = false;
+        let startX, startY;
+
+        function startSelection(event) {
+            isSelecting = true;
+            startX = event.offsetX;
+            startY = event.offsetY;
+        }
+
+        function updateSelection(event) {
+            if (isSelecting) {
+                let ctx = document.getElementById("selectionCanvas").getContext("2d");
+                let width = event.offsetX - startX;
+                let height = event.offsetY - startY;
+                selection = { x: startX, y: startY, width: width, height: height };
+
+                // Effacer le canvas et redessiner le cadre
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.strokeStyle = "red";
+                ctx.lineWidth = 2;
+                ctx.strokeRect(startX, startY, width, height);
+            }
+        }
+
+        function endSelection(event) {
+            isSelecting = false;
+
+            // Lorsque l'utilisateur termine la sélection, capturer l'image du cadre
+            let ctx = document.getElementById("selectionCanvas").getContext("2d");
+            let video = document.getElementById("video");
+
+            // Dessiner l'image du flux vidéo dans le canvas de sélection
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            // Capture de la zone sélectionnée sur l'image
+            let selectedImage = ctx.getImageData(selection.x, selection.y, selection.width, selection.height);
+            let selectedCanvas = document.createElement("canvas");
+            selectedCanvas.width = selection.width;
+            selectedCanvas.height = selection.height;
+            let selectedCtx = selectedCanvas.getContext("2d");
+            selectedCtx.putImageData(selectedImage, 0, 0);
+
+            // Utiliser Tesseract pour reconnaître le texte dans la zone sélectionnée
+            html2canvas(selectedCanvas).then(screenshot => {
+                Tesseract.recognize(screenshot, 'eng').then(({ data: { text } }) => {
+                    let textarea = document.getElementById("textList");
+                    textarea.value += (textarea.value ? "\n" : "") + text;
+                    stopCapture(); // Arrêter la capture après l'extraction du texte
                 });
             });
         }
