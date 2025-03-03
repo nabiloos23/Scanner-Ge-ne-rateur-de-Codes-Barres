@@ -15,7 +15,8 @@
         textarea { width: 80%; height: 100px; margin: 10px 0; }
         button, select { padding: 10px; font-size: 16px; cursor: pointer; margin: 5px; }
         #screenshot-container { display: none; position: relative; }
-        canvas { border: 2px dashed red; cursor: crosshair; width: 100%; }
+        video, canvas { width: 100%; max-width: 500px; }
+        #selectionCanvas { position: absolute; top: 0; left: 0; cursor: crosshair; }
         .barcode-container { margin-top: 20px; }
         .barcode-item { margin: 10px; display: inline-block; }
         #extractedText { display: none; width: 80%; height: 50px; }
@@ -38,9 +39,12 @@
     </select>
 
     <div id="screenshot-container">
-        <video id="video" autoplay style="width: 100%;"></video>
+        <video id="video" autoplay></video>
         <canvas id="canvas"></canvas>
+        <canvas id="selectionCanvas"></canvas>
     </div>
+
+    <button id="extractTextBtn" onclick="extractSelectedText()" style="display: none;">📜 Extraire le texte</button>
 
     <textarea id="extractedText" readonly></textarea><br>
     <button id="copyTextBtn" style="display: none;" onclick="copyExtractedText()">📋 Copier le texte</button>
@@ -50,9 +54,14 @@
     <script>
         let video = document.getElementById("video");
         let canvas = document.getElementById("canvas");
+        let selectionCanvas = document.getElementById("selectionCanvas");
         let captureBtn = document.getElementById("captureBtn");
         let extractedTextArea = document.getElementById("extractedText");
         let copyTextBtn = document.getElementById("copyTextBtn");
+        let extractTextBtn = document.getElementById("extractTextBtn");
+
+        let selectionCtx = selectionCanvas.getContext("2d");
+        let startX, startY, endX, endY, isDrawing = false;
 
         function generateBarcodes() {
             let container = document.getElementById("barcodeContainer");
@@ -65,10 +74,10 @@
                     let barcodeDiv = document.createElement("div");
                     barcodeDiv.classList.add("barcode-item");
 
-                    let canvas = document.createElement("canvas");
-                    JsBarcode(canvas, trimmed, { format: "CODE128", displayValue: true });
+                    let barcodeCanvas = document.createElement("canvas");
+                    JsBarcode(barcodeCanvas, trimmed, { format: "CODE128", displayValue: true });
 
-                    barcodeDiv.appendChild(canvas);
+                    barcodeDiv.appendChild(barcodeCanvas);
                     container.appendChild(barcodeDiv);
                 }
             });
@@ -88,25 +97,68 @@
             let ctx = canvas.getContext("2d");
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
+            selectionCanvas.width = video.videoWidth;
+            selectionCanvas.height = video.videoHeight;
+            
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            selectionCtx.clearRect(0, 0, selectionCanvas.width, selectionCanvas.height);
 
             let stream = video.srcObject;
             if (stream) stream.getTracks().forEach(track => track.stop());
 
             video.style.display = "none";
             captureBtn.style.display = "none";
+            extractTextBtn.style.display = "inline";
 
-            extractTextFromImage();
+            enableSelection();
         }
 
-        function extractTextFromImage() {
-            html2canvas(canvas).then(screenshot => {
-                Tesseract.recognize(screenshot, 'eng').then(({ data: { text } }) => {
-                    extractedTextArea.value = text.trim();
-                    extractedTextArea.style.display = "block";
-                    copyTextBtn.style.display = "inline";
+        function enableSelection() {
+            selectionCanvas.style.display = "block";
+            selectionCanvas.addEventListener("mousedown", startSelection);
+            selectionCanvas.addEventListener("mousemove", drawSelection);
+            selectionCanvas.addEventListener("mouseup", endSelection);
+        }
+
+        function startSelection(event) {
+            isDrawing = true;
+            startX = event.offsetX;
+            startY = event.offsetY;
+        }
+
+        function drawSelection(event) {
+            if (!isDrawing) return;
+            selectionCtx.clearRect(0, 0, selectionCanvas.width, selectionCanvas.height);
+            endX = event.offsetX;
+            endY = event.offsetY;
+            selectionCtx.strokeStyle = "red";
+            selectionCtx.lineWidth = 2;
+            selectionCtx.strokeRect(startX, startY, endX - startX, endY - startY);
+        }
+
+        function endSelection() {
+            isDrawing = false;
+        }
+
+        function extractSelectedText() {
+            let ctx = canvas.getContext("2d");
+            let width = endX - startX;
+            let height = endY - startY;
+            
+            if (width > 0 && height > 0) {
+                let croppedCanvas = document.createElement("canvas");
+                croppedCanvas.width = width;
+                croppedCanvas.height = height;
+                croppedCanvas.getContext("2d").drawImage(canvas, startX, startY, width, height, 0, 0, width, height);
+
+                html2canvas(croppedCanvas).then(screenshot => {
+                    Tesseract.recognize(screenshot, 'eng').then(({ data: { text } }) => {
+                        extractedTextArea.value = text.trim();
+                        extractedTextArea.style.display = "block";
+                        copyTextBtn.style.display = "inline";
+                    });
                 });
-            });
+            }
         }
 
         function copyExtractedText() {
