@@ -97,4 +97,61 @@
                 Quagga.start();
             });
 
-            Quagga.onDetected(fu
+            Quagga.onDetected(function(result) {
+                let scannedCode = result.codeResult.code;
+                let textarea = document.getElementById("textList");
+
+                if (!textarea.value.includes(scannedCode)) {
+                    textarea.value += (textarea.value ? "\n" : "") + scannedCode;
+                }
+                
+                stopScanner(); // Arrêter automatiquement après détection
+            });
+        }
+
+        // Fonction pour arrêter le scanner
+        function stopScanner() {
+            Quagga.stop();
+            document.getElementById("scanner-container").style.display = "none";
+            document.getElementById("stopScannerBtn").style.display = "none";
+        }
+
+        // Fonction pour capturer du texte
+        function captureText() {
+            document.getElementById("screenshot-container").style.display = "block";
+            let video = document.getElementById("video");
+            let canvas = document.getElementById("selectionCanvas");
+
+            navigator.mediaDevices.getUserMedia({ video: true }).then(stream => {
+                video.srcObject = stream;
+            });
+
+            canvas.addEventListener("click", function(event) {
+                let ctx = canvas.getContext("2d");
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+                // Capture d'écran et reconnaissance avec Tesseract.js
+                html2canvas(canvas).then(screenshot => {
+                    Tesseract.recognize(screenshot, 'eng').then(({ data: { text } }) => {
+                        let textarea = document.getElementById("textList");
+                        textarea.value += (textarea.value ? "\n" : "") + text;
+                        stopCapture(); // Arrêter la capture après l'extraction du texte
+                    });
+                });
+            });
+        }
+
+        // Fonction pour arrêter la capture d'écran
+        function stopCapture() {
+            let video = document.getElementById("video");
+            let stream = video.srcObject;
+            if (stream) {
+                let tracks = stream.getTracks();
+                tracks.forEach(track => track.stop());
+            }
+            document.getElementById("screenshot-container").style.display = "none";
+        }
+    </script>
+
+</body>
+</html>
