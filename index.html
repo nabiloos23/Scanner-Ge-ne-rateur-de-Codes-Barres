@@ -4,10 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Scanner & Générateur de Codes-Barres</title>
-    
+
     <!-- Librairies -->
     <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.0/dist/JsBarcode.all.min.js"></script>
-    <script src="https://unpkg.com/quagga"></script> <!-- Quagga ici -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.0.2/tesseract.min.js"></script>
 
@@ -15,10 +15,11 @@
         body { font-family: Arial, sans-serif; text-align: center; margin: 20px; }
         textarea { width: 80%; height: 100px; margin: 10px 0; }
         button { padding: 10px 15px; font-size: 16px; cursor: pointer; margin: 5px; }
+        select { padding: 8px; font-size: 16px; margin-bottom: 10px; }
         .barcode-container { margin-top: 20px; }
         .barcode-item { margin: 10px; display: inline-block; }
-        #scanner-container, #screenshot-container { display: none; width: 100%; max-width: 400px; margin: auto; position: relative; }
-        canvas { border: 2px dashed red; position: absolute; top: 0; left: 0; cursor: crosshair; }
+        #scanner-container, #screenshot-container { display: none; width: 100%; max-width: 400px; margin: auto; }
+        #canvas { width: 100%; cursor: crosshair; border: 2px dashed red; }
     </style>
 </head>
 <body>
@@ -31,15 +32,23 @@
     
     <button onclick="generateBarcodes()">Générer Codes-Barres</button>
     <button onclick="startScanner()">📷 Scanner un Code</button>
+    
+    <!-- Sélection de la caméra -->
+    <label for="cameraSelect">Choisir la caméra :</label>
+    <select id="cameraSelect">
+        <option value="environment">Arrière</option>
+        <option value="user">Avant</option>
+    </select>
+    
     <button onclick="captureText()">🖼 Extraire du texte</button>
     <button onclick="stopScanner()">✖ Arrêter Scanner</button>
 
     <div id="scanner-container">
-        <video id="scanner"></video>
+        <video id="scanner" style="width: 100%;"></video>
     </div>
 
     <div id="screenshot-container">
-        <video id="video" autoplay></video>
+        <video id="video" autoplay style="width: 100%;"></video>
         <canvas id="canvas"></canvas>
     </div>
 
@@ -78,7 +87,7 @@
                     type: "LiveStream",
                     target: document.querySelector("#scanner"),
                     constraints: {
-                        facingMode: "environment" // Utilise la caméra arrière
+                        facingMode: "environment"
                     }
                 },
                 decoder: {
@@ -100,7 +109,7 @@
                     textarea.value += (textarea.value ? "\n" : "") + scannedCode;
                 }
                 
-                stopScanner(); // Arrêter automatiquement après détection
+                stopScanner();
             });
         }
 
@@ -113,16 +122,21 @@
             document.getElementById("screenshot-container").style.display = "block";
             let video = document.getElementById("video");
             let canvas = document.getElementById("canvas");
+            let cameraMode = document.getElementById("cameraSelect").value;
 
-            navigator.mediaDevices.getUserMedia({ video: true }).then(stream => {
+            // Accéder à la caméra choisie (avant ou arrière)
+            navigator.mediaDevices.getUserMedia({ 
+                video: { facingMode: cameraMode }
+            }).then(stream => {
                 video.srcObject = stream;
+            }).catch(error => {
+                console.error("Erreur d'accès à la caméra :", error);
             });
 
-            canvas.addEventListener("click", function(event) {
+            canvas.addEventListener("click", function() {
                 let ctx = canvas.getContext("2d");
                 ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
                 
-                // Capture et analyse avec Tesseract.js
                 html2canvas(canvas).then(screenshot => {
                     Tesseract.recognize(screenshot, 'eng').then(({ data: { text } }) => {
                         let textarea = document.getElementById("textList");
