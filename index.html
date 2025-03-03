@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Scanner & Générateur de Codes-Barres</title>
+    <title>Scanner & Sélectionner Texte</title>
 
     <!-- Librairies -->
-    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.0/dist/JsBarcode.all.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.0.2/tesseract.min.js"></script>
+    <script src="https://unpkg.com/quagga"></script> <!-- Quagga pour scanner les codes-barres -->
 
     <style>
         body { font-family: Arial, sans-serif; text-align: center; margin: 20px; }
@@ -16,27 +16,27 @@
         button, select { padding: 10px; font-size: 16px; cursor: pointer; margin: 5px; }
         #screenshot-container { display: none; position: relative; }
         video, canvas { width: 100%; max-width: 500px; }
-        #selectionCanvas { position: absolute; top: 0; left: 0; cursor: crosshair; }
+        #selectionCanvas { position: absolute; top: 0; left: 0; cursor: crosshair; z-index: 10; }
         .barcode-container { margin-top: 20px; }
         .barcode-item { margin: 10px; display: inline-block; }
         #extractedText { display: none; width: 80%; height: 50px; }
+        #copyTextBtn { display: none; }
+        #scanner-container { display: none; }
     </style>
 </head>
 <body>
 
-    <h1>Scanner & Générateur de Codes-Barres</h1>
+    <h1>Scanner & Sélectionner Texte</h1>
 
     <textarea id="textList" placeholder="Saisir ou scanner un texte..."></textarea><br>
 
     <button onclick="generateBarcodes()">📌 Générer Codes-Barres</button>
-    <button onclick="startCamera()">📷 Ouvrir Caméra</button>
+    <button onclick="startScanner()">📷 Scanner un Code</button>
     <button id="captureBtn" onclick="captureImage()" style="display: none;">📸 Capturer</button>
 
-    <label for="cameraSelect">Caméra :</label>
-    <select id="cameraSelect">
-        <option value="environment">Arrière</option>
-        <option value="user">Avant</option>
-    </select>
+    <div id="scanner-container">
+        <video id="scanner"></video>
+    </div>
 
     <div id="screenshot-container">
         <video id="video" autoplay></video>
@@ -47,9 +47,7 @@
     <button id="extractTextBtn" onclick="extractSelectedText()" style="display: none;">📜 Extraire le texte</button>
 
     <textarea id="extractedText" readonly></textarea><br>
-    <button id="copyTextBtn" style="display: none;" onclick="copyExtractedText()">📋 Copier le texte</button>
-
-    <div class="barcode-container" id="barcodeContainer"></div>
+    <button id="copyTextBtn" onclick="copyExtractedText()">📋 Copier le texte</button>
 
     <script>
         let video = document.getElementById("video");
@@ -58,48 +56,70 @@
         let captureBtn = document.getElementById("captureBtn");
         let extractedTextArea = document.getElementById("extractedText");
         let copyTextBtn = document.getElementById("copyTextBtn");
-        let extractTextBtn = document.getElementById("extractTextBtn");
 
         let selectionCtx = selectionCanvas.getContext("2d");
         let startX, startY, endX, endY, isDrawing = false;
 
-        function generateBarcodes() {
-            let container = document.getElementById("barcodeContainer");
-            container.innerHTML = "";  
-            let lines = document.getElementById("textList").value.split("\n");
-
-            lines.forEach(line => {
-                let trimmed = line.trim();
-                if (trimmed) {
-                    let barcodeDiv = document.createElement("div");
-                    barcodeDiv.classList.add("barcode-item");
-
-                    let barcodeCanvas = document.createElement("canvas");
-                    JsBarcode(barcodeCanvas, trimmed, { format: "CODE128", displayValue: true });
-
-                    barcodeDiv.appendChild(barcodeCanvas);
-                    container.appendChild(barcodeDiv);
-                }
-            });
-        }
-
+        // Fonction pour démarrer la caméra
         function startCamera() {
-            let cameraMode = document.getElementById("cameraSelect").value;
             document.getElementById("screenshot-container").style.display = "block";
             captureBtn.style.display = "inline";
 
-            navigator.mediaDevices.getUserMedia({ video: { facingMode: cameraMode } })
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
             .then(stream => { video.srcObject = stream; })
             .catch(error => { console.error("Erreur d'accès à la caméra :", error); });
         }
 
+        // Fonction pour démarrer le scanner de code-barres
+        function startScanner() {
+            document.getElementById("scanner-container").style.display = "block";
+
+            Quagga.init({
+                inputStream: {
+                    name: "Live",
+                    type: "LiveStream",
+                    target: document.querySelector("#scanner"),
+                    constraints: {
+                        facingMode: "environment" // Utilise la caméra arrière
+                    }
+                },
+                decoder: {
+                    readers: ["code_128_reader", "ean_reader", "ean_8_reader", "upc_reader"]
+                }
+            }, function(err) {
+                if (err) {
+                    console.error("Erreur d'initialisation du scanner : ", err);
+                    return;
+                }
+                Quagga.start();
+            });
+
+            Quagga.onDetected(function(result) {
+                let scannedCode = result.codeResult.code;
+                let textarea = document.getElementById("textList");
+
+                if (!textarea.value.includes(scannedCode)) {
+                    textarea.value += (textarea.value ? "\n" : "") + scannedCode;
+                }
+                
+                stopScanner(); // Arrêter automatiquement après détection
+            });
+        }
+
+        // Fonction pour arrêter le scanner
+        function stopScanner() {
+            Quagga.stop();
+            document.getElementById("scanner-container").style.display = "none";
+        }
+
+        // Fonction pour capturer l'image de la caméra
         function captureImage() {
             let ctx = canvas.getContext("2d");
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             selectionCanvas.width = video.videoWidth;
             selectionCanvas.height = video.videoHeight;
-            
+
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
             selectionCtx.clearRect(0, 0, selectionCanvas.width, selectionCanvas.height);
 
@@ -108,11 +128,10 @@
 
             video.style.display = "none";
             captureBtn.style.display = "none";
-            extractTextBtn.style.display = "inline";
-
-            enableSelection();
+            document.getElementById("extractTextBtn").style.display = "inline";
         }
 
+        // Fonction pour activer la sélection manuelle du texte
         function enableSelection() {
             selectionCanvas.style.display = "block";
             selectionCanvas.addEventListener("mousedown", startSelection);
@@ -120,12 +139,14 @@
             selectionCanvas.addEventListener("mouseup", endSelection);
         }
 
+        // Fonction pour démarrer la sélection du cadre
         function startSelection(event) {
             isDrawing = true;
             startX = event.offsetX;
             startY = event.offsetY;
         }
 
+        // Fonction pour dessiner le cadre de sélection
         function drawSelection(event) {
             if (!isDrawing) return;
             selectionCtx.clearRect(0, 0, selectionCanvas.width, selectionCanvas.height);
@@ -136,15 +157,17 @@
             selectionCtx.strokeRect(startX, startY, endX - startX, endY - startY);
         }
 
+        // Fonction pour terminer la sélection
         function endSelection() {
             isDrawing = false;
         }
 
+        // Fonction pour extraire le texte dans la zone sélectionnée
         function extractSelectedText() {
             let ctx = canvas.getContext("2d");
             let width = endX - startX;
             let height = endY - startY;
-            
+
             if (width > 0 && height > 0) {
                 let croppedCanvas = document.createElement("canvas");
                 croppedCanvas.width = width;
@@ -161,6 +184,7 @@
             }
         }
 
+        // Fonction pour copier le texte extrait
         function copyExtractedText() {
             extractedTextArea.select();
             document.execCommand("copy");
