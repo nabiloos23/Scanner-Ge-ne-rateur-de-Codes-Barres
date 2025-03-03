@@ -3,36 +3,48 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Capture & Sélection Texte</title>
+    <title>Scanner & Générer Code-Barres + Capture Texte</title>
 
     <!-- Librairies -->
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.0/dist/JsBarcode.all.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.0.2/tesseract.min.js"></script>
+    <script src="https://unpkg.com/quagga"></script>
 
     <style>
         body { font-family: Arial, sans-serif; text-align: center; margin: 20px; }
         button { padding: 10px; font-size: 16px; cursor: pointer; margin: 5px; }
         video, canvas { width: 100%; max-width: 400px; margin: auto; display: block; }
-        #captureContainer { display: none; }
+        #captureContainer, #barcodeContainer, #scanner-container { display: none; }
         #capturedImage { border: 2px solid black; cursor: crosshair; }
         #textOutput { width: 80%; height: 100px; margin: 10px auto; display: block; }
     </style>
 </head>
 <body>
 
-    <h1>Capture & Sélection Texte</h1>
+    <h1>Scanner & Générer Code-Barres + Capture Texte</h1>
 
-    <button onclick="startCamera()">📷 Ouvrir la Caméra</button>
-    <button onclick="captureImage()">📸 Capturer l’image</button>
-    <button onclick="extractText()">🔍 Extraire Texte</button>
-    
+    <textarea id="textInput" placeholder="Saisir ou scanner un texte..."></textarea><br>
+
+    <button onclick="generateBarcode()">📌 Générer Code-Barres</button>
+    <button onclick="startScanner()">📷 Scanner Code</button>
+    <button onclick="captureText()">🖼 Capturer Texte</button>
+
+    <div id="scanner-container">
+        <video id="scanner"></video>
+        <button onclick="stopScanner()">❌ Arrêter Scanner</button>
+    </div>
+
+    <div id="barcodeContainer"></div>
+
     <video id="video" autoplay></video>
     
     <div id="captureContainer">
         <canvas id="capturedImage"></canvas>
+        <button onclick="extractText()">🔍 Extraire Texte</button>
     </div>
 
-    <textarea id="textOutput" placeholder="Texte extrait apparaîtra ici..."></textarea>
+    <textarea id="textOutput" placeholder="Texte extrait..."></textarea>
 
     <script>
         let video = document.getElementById("video");
@@ -43,8 +55,45 @@
         let isSelecting = false;
         let startX, startY;
 
+        // 📌 Générer un code-barres
+        function generateBarcode() {
+            let text = document.getElementById("textInput").value;
+            if (text.trim() === "") return alert("Saisissez un texte !");
+            
+            let container = document.getElementById("barcodeContainer");
+            container.innerHTML = "";  
+            
+            let canvas = document.createElement("canvas");
+            JsBarcode(canvas, text, { format: "CODE128", displayValue: true });
+
+            container.appendChild(canvas);
+            container.style.display = "block";
+        }
+
+        // 📌 Scanner un code-barres
+        function startScanner() {
+            document.getElementById("scanner-container").style.display = "block";
+            Quagga.init({
+                inputStream: { name: "Live", type: "LiveStream", target: document.querySelector("#scanner") },
+                decoder: { readers: ["code_128_reader", "ean_reader", "ean_8_reader", "upc_reader"] }
+            }, err => {
+                if (err) return console.error("Erreur scanner : ", err);
+                Quagga.start();
+            });
+
+            Quagga.onDetected(result => {
+                document.getElementById("textInput").value = result.codeResult.code;
+                stopScanner();
+            });
+        }
+
+        function stopScanner() {
+            Quagga.stop();
+            document.getElementById("scanner-container").style.display = "none";
+        }
+
         // 📌 Ouvrir la caméra
-        function startCamera() {
+        function captureText() {
             navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
                 .then(stream => {
                     video.srcObject = stream;
@@ -53,7 +102,7 @@
                 .catch(err => console.error("Erreur accès caméra : ", err));
         }
 
-        // 📌 Capturer l’image depuis la vidéo
+        // 📌 Capturer une image
         function captureImage() {
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
@@ -61,7 +110,7 @@
             document.getElementById("captureContainer").style.display = "block";
         }
 
-        // 📌 Sélection manuelle sur l’image capturée
+        // 📌 Sélection manuelle
         canvas.addEventListener("mousedown", event => {
             isSelecting = true;
             startX = event.offsetX;
@@ -85,7 +134,7 @@
             isSelecting = false;
         });
 
-        // 📌 Extraire le texte de la zone sélectionnée
+        // 📌 Extraire le texte
         function extractText() {
             let selectedCanvas = document.createElement("canvas");
             selectedCanvas.width = selection.width;
@@ -93,7 +142,6 @@
             let selectedCtx = selectedCanvas.getContext("2d");
             selectedCtx.drawImage(canvas, selection.x, selection.y, selection.width, selection.height, 0, 0, selection.width, selection.height);
 
-            // OCR avec Tesseract.js
             Tesseract.recognize(selectedCanvas, 'eng')
                 .then(({ data: { text } }) => {
                     document.getElementById("textOutput").value = text;
