@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Scanner & Sélectionner Texte</title>
+    <title>Scanner & Sélectionner Texte</title>
 
     <!-- Librairies -->
     <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.0/dist/JsBarcode.all.min.js"></script>
@@ -27,14 +27,14 @@
 </head>
 <body>
 
-    <h1>Scanner & Sélectionner Texte</h1>
+    <h1>Scanner & Sélectionner Texte</h1>
 
     <textarea id="textList" placeholder="Saisir ou scanner un texte..."></textarea><br>
 
-    <button onclick="generateBarcodes()">📌 Générer Codes-Barres</button>
+    <button onclick="generateBarcodes()">📌 Générer Codes-Barres</button>
     <button onclick="startScanner()">📷 Scanner un Code</button>
     <button onclick="captureText()">🖼 Capturer du Texte</button>
-    <button onclick="stopScanner()" id="stopScannerBtn" style="display: none;">❌ Arrêter Scanner</button>
+    <button onclick="stopScanner()" id="stopScannerBtn" style="display: none;">❌ Arrêter Scanner</button>
 
     <div id="scanner-container">
         <video id="scanner"></video>
@@ -43,20 +43,20 @@
     <div id="screenshot-container">
         <video id="video" autoplay></video>
         <canvas id="selectionCanvas"></canvas>
-        <button onclick="switchCamera()">🔄 Changer de Caméra</button>
+        <button onclick="switchCamera()">🔄 Changer de Caméra</button>
     </div>
 
     <div class="barcode-container" id="barcodeContainer"></div>
 
     <script>
         let currentStream = null;
-        let currentCamera = "environment"; // Caméra arrière par défaut
-        let selection = { x: 0, y: 0, width: 0, height: 0 }; // Variables pour dessiner la sélection
+        let currentCamera = "environment"; // Caméra arrière par défaut
+        let selection = { x: 0, y: 0, width: 0, height: 0 }; // Variables pour dessiner la sélection
 
-        // Générer des codes-barres à partir du texte
+        // Générer des codes-barres à partir du texte
         function generateBarcodes() {
             let container = document.getElementById("barcodeContainer");
-            container.innerHTML = "";  // Réinitialiser les codes existants
+            container.innerHTML = "";  // Réinitialiser les codes existants
             let lines = document.getElementById("textList").value.split("\n");
 
             lines.forEach(line => {
@@ -77,7 +77,7 @@
             });
         }
 
-        // Fonction pour démarrer le scanner
+        // Fonction pour démarrer le scanner
         function startScanner() {
             document.getElementById("scanner-container").style.display = "block";
             document.getElementById("stopScannerBtn").style.display = "inline-block";
@@ -88,7 +88,7 @@
                     type: "LiveStream",
                     target: document.querySelector("#scanner"),
                     constraints: {
-                        facingMode: currentCamera // Utiliser la caméra choisie
+                        facingMode: currentCamera // Utiliser la caméra choisie
                     }
                 },
                 decoder: {
@@ -110,11 +110,11 @@
                     textarea.value += (textarea.value ? "\n" : "") + scannedCode;
                 }
                 
-                stopScanner(); // Arrêter automatiquement après détection
+                stopScanner(); // Arrêter automatiquement après détection
             });
         }
 
-        // Fonction pour arrêter le scanner
+        // Fonction pour arrêter le scanner
         function stopScanner() {
             Quagga.stop();
             document.getElementById("scanner-container").style.display = "none";
@@ -127,29 +127,29 @@
             let video = document.getElementById("video");
             let canvas = document.getElementById("selectionCanvas");
 
-            // Arrêter la capture vidéo précédente si elle existe
+            // Arrêter la capture vidéo précédente si elle existe
             if (currentStream) {
                 let tracks = currentStream.getTracks();
                 tracks.forEach(track => track.stop());
             }
 
-            // Demander la permission pour utiliser la caméra
+            // Demander la permission pour utiliser la caméra
             navigator.mediaDevices.getUserMedia({ video: { facingMode: currentCamera } })
                 .then(stream => {
                     video.srcObject = stream;
                     currentStream = stream;
                 })
                 .catch(err => {
-                    console.error("Erreur d'accès à la caméra : ", err);
+                    console.error("Erreur d'accès à la caméra : ", err);
                 });
 
-            // Événements pour dessiner un cadre de sélection
+            // Événements pour dessiner un cadre de sélection
             canvas.addEventListener("mousedown", startSelection);
             canvas.addEventListener("mousemove", updateSelection);
             canvas.addEventListener("mouseup", endSelection);
         }
 
-        // Variables pour dessiner la sélection
+        // Variables pour dessiner la sélection
         let isSelecting = false;
         let startX, startY;
 
@@ -177,14 +177,14 @@
         function endSelection(event) {
             isSelecting = false;
 
-            // Lorsque l'utilisateur termine la sélection, capturer l'image du cadre
+            // Lorsque l'utilisateur termine la sélection, capturer l'image du cadre
             let ctx = document.getElementById("selectionCanvas").getContext("2d");
             let video = document.getElementById("video");
 
-            // Dessiner l'image du flux vidéo dans le canvas de sélection
+            // Dessiner l'image du flux vidéo dans le canvas de sélection
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-            // Capture de la zone sélectionnée sur l'image
+            // Capture de la zone sélectionnée sur l'image
             let selectedImage = ctx.getImageData(selection.x, selection.y, selection.width, selection.height);
             let selectedCanvas = document.createElement("canvas");
             selectedCanvas.width = selection.width;
@@ -192,30 +192,31 @@
             let selectedCtx = selectedCanvas.getContext("2d");
             selectedCtx.putImageData(selectedImage, 0, 0);
 
-            // Utiliser Tesseract pour reconnaître le texte dans la zone sélectionnée
+            // Utiliser Tesseract pour reconnaître le texte dans la zone sélectionnée
             html2canvas(selectedCanvas).then(screenshot => {
                 Tesseract.recognize(screenshot, 'eng').then(({ data: { text } }) => {
                     let textarea = document.getElementById("textList");
                     textarea.value += (textarea.value ? "\n" : "") + text;
-                    stopCapture(); // Arrêter la capture après l'extraction du texte
+                    stopCapture(); // Arrêter la capture après l'extraction du texte
                 });
             });
         }
 
-        // Fonction pour arrêter la capture d'écran
+        // Fonction pour arrêter la capture d'écran
         function stopCapture() {
             if (currentStream) {
                 let tracks = currentStream.getTracks();
                 tracks.forEach(track => track.stop());
             }
+            document.get
             document.getElementById("screenshot-container").style.display = "none";
         }
 
-        // Fonction pour changer la caméra (avant/arrière)
+        // Fonction pour changer de caméra
         function switchCamera() {
-            currentCamera = currentCamera === "environment" ? "user" : "environment"; // Basculer entre caméra avant et arrière
-            stopCapture(); // Arrêter la capture en cours
-            captureText(); // Relancer la capture avec la caméra mise à jour
+            currentCamera = (currentCamera === "environment") ? "user" : "environment"; // Alterner entre avant et arrière
+            stopCapture();
+            captureText();
         }
     </script>
 
