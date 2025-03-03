@@ -43,11 +43,15 @@
     <div id="screenshot-container">
         <video id="video" autoplay></video>
         <canvas id="selectionCanvas"></canvas>
+        <button onclick="switchCamera()">🔄 Changer de Caméra</button>
     </div>
 
     <div class="barcode-container" id="barcodeContainer"></div>
 
     <script>
+        let currentStream = null;
+        let currentCamera = "environment"; // Caméra arrière par défaut
+
         // Générer des codes-barres à partir du texte
         function generateBarcodes() {
             let container = document.getElementById("barcodeContainer");
@@ -83,7 +87,7 @@
                     type: "LiveStream",
                     target: document.querySelector("#scanner"),
                     constraints: {
-                        facingMode: "environment" // Utiliser la caméra arrière
+                        facingMode: currentCamera // Utiliser la caméra choisie
                     }
                 },
                 decoder: {
@@ -122,8 +126,9 @@
             let video = document.getElementById("video");
             let canvas = document.getElementById("selectionCanvas");
 
-            navigator.mediaDevices.getUserMedia({ video: true }).then(stream => {
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: currentCamera } }).then(stream => {
                 video.srcObject = stream;
+                currentStream = stream;
             });
 
             canvas.addEventListener("click", function(event) {
@@ -143,13 +148,18 @@
 
         // Fonction pour arrêter la capture d'écran
         function stopCapture() {
-            let video = document.getElementById("video");
-            let stream = video.srcObject;
-            if (stream) {
-                let tracks = stream.getTracks();
+            if (currentStream) {
+                let tracks = currentStream.getTracks();
                 tracks.forEach(track => track.stop());
             }
             document.getElementById("screenshot-container").style.display = "none";
+        }
+
+        // Fonction pour changer la caméra (avant/arrière)
+        function switchCamera() {
+            currentCamera = currentCamera === "environment" ? "user" : "environment"; // Basculer entre caméra avant et arrière
+            stopCapture(); // Arrêter la capture en cours
+            captureText(); // Relancer la capture avec la caméra mise à jour
         }
     </script>
 
