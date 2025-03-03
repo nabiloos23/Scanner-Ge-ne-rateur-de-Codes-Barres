@@ -18,28 +18,27 @@
         select { padding: 8px; font-size: 16px; margin-bottom: 10px; }
         .barcode-container { margin-top: 20px; }
         .barcode-item { margin: 10px; display: inline-block; }
-        #scanner-container, #screenshot-container { display: none; width: 100%; max-width: 400px; margin: auto; }
-        #canvas { width: 100%; cursor: crosshair; border: 2px dashed red; }
+        #scanner-container, #screenshot-container { display: none; width: 100%; max-width: 400px; margin: auto; position: relative; }
+        canvas { cursor: crosshair; border: 2px dashed red; width: 100%; }
+        #selection { position: absolute; border: 2px solid blue; display: none; }
     </style>
 </head>
 <body>
 
     <h1>Scanner & Générateur de Codes-Barres</h1>
 
-    <p>Entrez un texte ou scannez un code :</p>
-    <textarea id="textList" placeholder="Exemple :&#10;123456789012&#10;CODE123&#10;HELLO2024"></textarea>
-    <br>
-    
+    <textarea id="textList" placeholder="Saisir ou scanner un texte..."></textarea><br>
+
     <button onclick="generateBarcodes()">Générer Codes-Barres</button>
     <button onclick="startScanner()">📷 Scanner un Code</button>
-    
-    <!-- Sélection de la caméra -->
-    <label for="cameraSelect">Choisir la caméra :</label>
+
+    <!-- Choix de la caméra -->
+    <label for="cameraSelect">Caméra :</label>
     <select id="cameraSelect">
         <option value="environment">Arrière</option>
         <option value="user">Avant</option>
     </select>
-    
+
     <button onclick="captureText()">🖼 Extraire du texte</button>
     <button onclick="stopScanner()">✖ Arrêter Scanner</button>
 
@@ -50,11 +49,15 @@
     <div id="screenshot-container">
         <video id="video" autoplay style="width: 100%;"></video>
         <canvas id="canvas"></canvas>
+        <div id="selection"></div>
     </div>
 
     <div class="barcode-container" id="barcodeContainer"></div>
 
     <script>
+        let selectionBox = document.getElementById("selection");
+        let startX, startY, endX, endY;
+
         function generateBarcodes() {
             let container = document.getElementById("barcodeContainer");
             container.innerHTML = "";  
@@ -86,13 +89,9 @@
                     name: "Live",
                     type: "LiveStream",
                     target: document.querySelector("#scanner"),
-                    constraints: {
-                        facingMode: "environment"
-                    }
+                    constraints: { facingMode: "environment" }
                 },
-                decoder: {
-                    readers: ["code_128_reader", "ean_reader", "ean_8_reader", "upc_reader"]
-                }
+                decoder: { readers: ["code_128_reader", "ean_reader", "ean_8_reader", "upc_reader"] }
             }, function(err) {
                 if (err) {
                     console.error("Erreur d'initialisation du scanner : ", err);
@@ -124,26 +123,55 @@
             let canvas = document.getElementById("canvas");
             let cameraMode = document.getElementById("cameraSelect").value;
 
-            // Accéder à la caméra choisie (avant ou arrière)
-            navigator.mediaDevices.getUserMedia({ 
-                video: { facingMode: cameraMode }
-            }).then(stream => {
-                video.srcObject = stream;
-            }).catch(error => {
-                console.error("Erreur d'accès à la caméra :", error);
-            });
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: cameraMode } })
+            .then(stream => { video.srcObject = stream; })
+            .catch(error => { console.error("Erreur d'accès à la caméra :", error); });
 
-            canvas.addEventListener("click", function() {
-                let ctx = canvas.getContext("2d");
-                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                
-                html2canvas(canvas).then(screenshot => {
-                    Tesseract.recognize(screenshot, 'eng').then(({ data: { text } }) => {
-                        let textarea = document.getElementById("textList");
-                        textarea.value += (textarea.value ? "\n" : "") + text;
-                        stopCapture();
-                    });
-                });
+            canvas.addEventListener("mousedown", startSelection);
+            canvas.addEventListener("mouseup", endSelection);
+        }
+
+        function startSelection(event) {
+            selectionBox.style.display = "block";
+            startX = event.offsetX;
+            startY = event.offsetY;
+            selectionBox.style.left = startX + "px";
+            selectionBox.style.top = startY + "px";
+            selectionBox.style.width = "0px";
+            selectionBox.style.height = "0px";
+        }
+
+        function endSelection(event) {
+            endX = event.offsetX;
+            endY = event.offsetY;
+
+            let width = Math.abs(endX - startX);
+            let height = Math.abs(endY - startY);
+
+            selectionBox.style.width = width + "px";
+            selectionBox.style.height = height + "px";
+
+            extractSelectedText();
+        }
+
+        function extractSelectedText() {
+            let video = document.getElementById("video");
+            let canvas = document.getElementById("canvas");
+            let ctx = canvas.getContext("2d");
+
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            let imageData = ctx.getImageData(startX, startY, endX - startX, endY - startY);
+
+            let tempCanvas = document.createElement("canvas");
+            tempCanvas.width = endX - startX;
+            tempCanvas.height = endY - startY;
+            let tempCtx = tempCanvas.getContext("2d");
+            tempCtx.putImageData(imageData, 0, 0);
+
+            Tesseract.recognize(tempCanvas, 'eng').then(({ data: { text } }) => {
+                let textarea = document.getElementById("textList");
+                textarea.value += (textarea.value ? "\n" : "") + text;
+                stopCapture();
             });
         }
 
@@ -151,10 +179,10 @@
             let video = document.getElementById("video");
             let stream = video.srcObject;
             if (stream) {
-                let tracks = stream.getTracks();
-                tracks.forEach(track => track.stop());
+                stream.getTracks().forEach(track => track.stop());
             }
             document.getElementById("screenshot-container").style.display = "none";
+            selectionBox.style.display = "none";
         }
     </script>
 
