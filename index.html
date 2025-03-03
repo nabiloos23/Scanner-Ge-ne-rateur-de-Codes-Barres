@@ -4,81 +4,43 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Scanner & Générateur de Codes-Barres</title>
+    
+    <!-- Librairies -->
     <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.0/dist/JsBarcode.all.min.js"></script>
-    <script src="https://unpkg.com/quagga"></script>
+    <script src="https://unpkg.com/quagga"></script> <!-- Quagga ici -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.0.2/tesseract.min.js"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.12/cropper.min.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.12/cropper.min.js"></script>
-    
+
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            text-align: center;
-            margin: 20px;
-        }
-        textarea {
-            width: 80%;
-            height: 100px;
-            margin: 10px 0;
-        }
-        button {
-            padding: 10px 15px;
-            font-size: 16px;
-            cursor: pointer;
-            margin: 5px;
-        }
-        .barcode-container {
-            margin-top: 20px;
-        }
-        .barcode-item {
-            margin: 10px;
-            display: inline-block;
-        }
-        #scanner-container {
-            display: none;
-            width: 100%;
-            max-width: 400px;
-            margin: auto;
-        }
-        #image-container {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.8);
-            justify-content: center;
-            align-items: center;
-        }
-        #cropped-image {
-            max-width: 90%;
-            max-height: 90%;
-        }
+        body { font-family: Arial, sans-serif; text-align: center; margin: 20px; }
+        textarea { width: 80%; height: 100px; margin: 10px 0; }
+        button { padding: 10px 15px; font-size: 16px; cursor: pointer; margin: 5px; }
+        .barcode-container { margin-top: 20px; }
+        .barcode-item { margin: 10px; display: inline-block; }
+        #scanner-container, #screenshot-container { display: none; width: 100%; max-width: 400px; margin: auto; position: relative; }
+        canvas { border: 2px dashed red; position: absolute; top: 0; left: 0; cursor: crosshair; }
     </style>
 </head>
 <body>
 
     <h1>Scanner & Générateur de Codes-Barres</h1>
 
-    <p>Entrez un texte ou utilisez la caméra / capture :</p>
+    <p>Entrez un texte ou scannez un code :</p>
     <textarea id="textList" placeholder="Exemple :&#10;123456789012&#10;CODE123&#10;HELLO2024"></textarea>
     <br>
     
     <button onclick="generateBarcodes()">Générer Codes-Barres</button>
-    <button onclick="startScanner()">Scanner un Code</button>
-    <button onclick="captureScreen()">Capturer Écran</button>
+    <button onclick="startScanner()">📷 Scanner un Code</button>
+    <button onclick="captureText()">🖼 Extraire du texte</button>
+    <button onclick="stopScanner()">✖ Arrêter Scanner</button>
 
     <div id="scanner-container">
         <video id="scanner"></video>
-        <button onclick="stopScanner()">Arrêter Scanner</button>
     </div>
 
-    <div id="image-container">
-        <img id="cropped-image">
-        <button onclick="extractText()">Extraire Texte</button>
-        <button onclick="closeImage()">Annuler</button>
+    <div id="screenshot-container">
+        <video id="video" autoplay></video>
+        <canvas id="canvas"></canvas>
     </div>
 
     <div class="barcode-container" id="barcodeContainer"></div>
@@ -116,9 +78,7 @@
                     type: "LiveStream",
                     target: document.querySelector("#scanner"),
                     constraints: {
-                        width: 400,
-                        height: 300,
-                        facingMode: "environment"
+                        facingMode: "environment" // Utilise la caméra arrière
                     }
                 },
                 decoder: {
@@ -140,7 +100,7 @@
                     textarea.value += (textarea.value ? "\n" : "") + scannedCode;
                 }
                 
-                stopScanner();
+                stopScanner(); // Arrêter automatiquement après détection
             });
         }
 
@@ -149,45 +109,38 @@
             document.getElementById("scanner-container").style.display = "none";
         }
 
-        function captureScreen() {
-            html2canvas(document.body).then(canvas => {
-                let image = canvas.toDataURL("image/png");
-                showCropper(image);
+        function captureText() {
+            document.getElementById("screenshot-container").style.display = "block";
+            let video = document.getElementById("video");
+            let canvas = document.getElementById("canvas");
+
+            navigator.mediaDevices.getUserMedia({ video: true }).then(stream => {
+                video.srcObject = stream;
+            });
+
+            canvas.addEventListener("click", function(event) {
+                let ctx = canvas.getContext("2d");
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                
+                // Capture et analyse avec Tesseract.js
+                html2canvas(canvas).then(screenshot => {
+                    Tesseract.recognize(screenshot, 'eng').then(({ data: { text } }) => {
+                        let textarea = document.getElementById("textList");
+                        textarea.value += (textarea.value ? "\n" : "") + text;
+                        stopCapture();
+                    });
+                });
             });
         }
 
-        function showCropper(imageSrc) {
-            let imageContainer = document.getElementById("image-container");
-            let imageElement = document.getElementById("cropped-image");
-
-            imageElement.src = imageSrc;
-            imageContainer.style.display = "flex";
-
-            let cropper = new Cropper(imageElement, {
-                aspectRatio: NaN,
-                viewMode: 1
-            });
-
-            document.getElementById("extractText").onclick = function () {
-                let croppedCanvas = cropper.getCroppedCanvas();
-                extractTextFromImage(croppedCanvas);
-                closeImage();
-            };
-        }
-
-        function extractTextFromImage(canvas) {
-            Tesseract.recognize(
-                canvas,
-                'eng',
-                { logger: m => console.log(m) }
-            ).then(({ data: { text } }) => {
-                let textarea = document.getElementById("textList");
-                textarea.value += (textarea.value ? "\n" : "") + text.trim();
-            });
-        }
-
-        function closeImage() {
-            document.getElementById("image-container").style.display = "none";
+        function stopCapture() {
+            let video = document.getElementById("video");
+            let stream = video.srcObject;
+            if (stream) {
+                let tracks = stream.getTracks();
+                tracks.forEach(track => track.stop());
+            }
+            document.getElementById("screenshot-container").style.display = "none";
         }
     </script>
 
