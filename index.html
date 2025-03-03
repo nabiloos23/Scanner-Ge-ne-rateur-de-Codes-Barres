@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scanner & Générateur de Codes-Barres</title>
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.0/dist/JsBarcode.all.min.js"></script>
+    <script src="https://unpkg.com/quagga"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.0.2/tesseract.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.12/cropper.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.12/cropper.min.js"></script>
+    
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin: 20px;
+        }
+        textarea {
+            width: 80%;
+            height: 100px;
+            margin: 10px 0;
+        }
+        button {
+            padding: 10px 15px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        .barcode-container {
+            margin-top: 20px;
+        }
+        .barcode-item {
+            margin: 10px;
+            display: inline-block;
+        }
+        #scanner-container {
+            display: none;
+            width: 100%;
+            max-width: 400px;
+            margin: auto;
+        }
+        #image-container {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            justify-content: center;
+            align-items: center;
+        }
+        #cropped-image {
+            max-width: 90%;
+            max-height: 90%;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Scanner & Générateur de Codes-Barres</h1>
+
+    <p>Entrez un texte ou utilisez la caméra / capture :</p>
+    <textarea id="textList" placeholder="Exemple :&#10;123456789012&#10;CODE123&#10;HELLO2024"></textarea>
+    <br>
+    
+    <button onclick="generateBarcodes()">Générer Codes-Barres</button>
+    <button onclick="startScanner()">Scanner un Code</button>
+    <button onclick="captureScreen()">Capturer Écran</button>
+
+    <div id="scanner-container">
+        <video id="scanner"></video>
+        <button onclick="stopScanner()">Arrêter Scanner</button>
+    </div>
+
+    <div id="image-container">
+        <img id="cropped-image">
+        <button onclick="extractText()">Extraire Texte</button>
+        <button onclick="closeImage()">Annuler</button>
+    </div>
+
+    <div class="barcode-container" id="barcodeContainer"></div>
+
+    <script>
+        function generateBarcodes() {
+            let container = document.getElementById("barcodeContainer");
+            container.innerHTML = "";  
+            let lines = document.getElementById("textList").value.split("\n");
+
+            lines.forEach(line => {
+                let trimmed = line.trim();
+                if (trimmed) {
+                    let barcodeDiv = document.createElement("div");
+                    barcodeDiv.classList.add("barcode-item");
+
+                    let canvas = document.createElement("canvas");
+                    JsBarcode(canvas, trimmed, {
+                        format: "CODE128",
+                        displayValue: true
+                    });
+
+                    barcodeDiv.appendChild(canvas);
+                    container.appendChild(barcodeDiv);
+                }
+            });
+        }
+
+        function startScanner() {
+            document.getElementById("scanner-container").style.display = "block";
+
+            Quagga.init({
+                inputStream: {
+                    name: "Live",
+                    type: "LiveStream",
+                    target: document.querySelector("#scanner"),
+                    constraints: {
+                        width: 400,
+                        height: 300,
+                        facingMode: "environment"
+                    }
+                },
+                decoder: {
+                    readers: ["code_128_reader", "ean_reader", "ean_8_reader", "upc_reader"]
+                }
+            }, function(err) {
+                if (err) {
+                    console.error("Erreur d'initialisation du scanner : ", err);
+                    return;
+                }
+                Quagga.start();
+            });
+
+            Quagga.onDetected(function(result) {
+                let scannedCode = result.codeResult.code;
+                let textarea = document.getElementById("textList");
+
+                if (!textarea.value.includes(scannedCode)) {
+                    textarea.value += (textarea.value ? "\n" : "") + scannedCode;
+                }
+                
+                stopScanner();
+            });
+        }
+
+        function stopScanner() {
+            Quagga.stop();
+            document.getElementById("scanner-container").style.display = "none";
+        }
+
+        function captureScreen() {
+            html2canvas(document.body).then(canvas => {
+                let image = canvas.toDataURL("image/png");
+                showCropper(image);
+            });
+        }
+
+        function showCropper(imageSrc) {
+            let imageContainer = document.getElementById("image-container");
+            let imageElement = document.getElementById("cropped-image");
+
+            imageElement.src = imageSrc;
+            imageContainer.style.display = "flex";
+
+            let cropper = new Cropper(imageElement, {
+                aspectRatio: NaN,
+                viewMode: 1
+            });
+
+            document.getElementById("extractText").onclick = function () {
+                let croppedCanvas = cropper.getCroppedCanvas();
+                extractTextFromImage(croppedCanvas);
+                closeImage();
+            };
+        }
+
+        function extractTextFromImage(canvas) {
+            Tesseract.recognize(
+                canvas,
+                'eng',
+                { logger: m => console.log(m) }
+            ).then(({ data: { text } }) => {
+                let textarea = document.getElementById("textList");
+                textarea.value += (textarea.value ? "\n" : "") + text.trim();
+            });
+        }
+
+        function closeImage() {
+            document.getElementById("image-container").style.display = "none";
+        }
+    </script>
+
+</body>
+</html>
